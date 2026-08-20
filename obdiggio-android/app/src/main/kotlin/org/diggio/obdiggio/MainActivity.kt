@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -23,8 +24,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -34,9 +38,12 @@ import org.diggio.obdiggio.core.obd.Pid
 import org.diggio.obdiggio.core.obd.PidResult
 import org.diggio.obdiggio.core.obd.Pids
 import org.diggio.obdiggio.ui.Neon
-import org.diggio.obdiggio.ui.NeonBar
-import org.diggio.obdiggio.ui.NeonGauge
 import org.diggio.obdiggio.ui.ObdiggioTheme
+import org.diggio.obdiggio.ui.SevenSegment
+import org.diggio.obdiggio.ui.Tachometer
+import org.diggio.obdiggio.ui.TileIcon
+import org.diggio.obdiggio.ui.carbonBackground
+import org.diggio.obdiggio.ui.drawTileIcon
 
 class MainActivity : ComponentActivity() {
 
@@ -75,8 +82,6 @@ private fun AppRoot(viewModel: ObdViewModel, onScanConnect: () -> Unit) {
     var tab by remember { mutableStateOf(Tab.CONNECT) }
     LaunchedEffect(state.connected) { if (state.connected) tab = Tab.DASHBOARD }
 
-    val bg = Brush.verticalGradient(listOf(Neon.BgTop, Neon.Bg, Color(0xFF05070C)))
-
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
@@ -111,9 +116,8 @@ private fun AppRoot(viewModel: ObdViewModel, onScanConnect: () -> Unit) {
             }
         },
     ) { padding ->
-        Box(
-            Modifier.fillMaxSize().background(bg).padding(padding),
-        ) {
+        Box(Modifier.fillMaxSize().padding(padding)) {
+            Canvas(Modifier.fillMaxSize()) { carbonBackground() }
             when (tab) {
                 Tab.DASHBOARD -> DashboardScreen(viewModel, state)
                 Tab.DTC -> DtcScreen(viewModel, state)
@@ -129,37 +133,110 @@ private fun DashboardScreen(viewModel: ObdViewModel, state: UiState) {
         CenterHint("Non connesso.\nVai su \"Connessione\".")
         return
     }
-    val rpm = state.values[Pids[0x0C]?.key]?.value
-    val speed = state.values[Pids[0x0D]?.key]?.value
-    val heroKeys = setOfNotNull(Pids[0x0C]?.key, Pids[0x0D]?.key, Pids[0x0B]?.key, Pids[0x33]?.key)
-    val tiles = viewModel.dashboardPids.filter { it.key !in heroKeys }
+    val v = state.values
+    val rpm = v[Pids[0x0C]?.key]?.value
+    val speed = v[Pids[0x0D]?.key]?.value
+    val coolant = v[Pids[0x05]?.key]?.value
+    val load = v[Pids[0x04]?.key]?.value
+    val volt = v[Pids[0x42]?.key]?.value
+    val heroKeys = setOfNotNull(
+        Pids[0x0C]?.key, Pids[0x0D]?.key, Pids[0x0B]?.key, Pids[0x33]?.key,
+        Pids[0x05]?.key, Pids[0x04]?.key, Pids[0x42]?.key,
+    )
+    val extra = viewModel.dashboardPids.filter { it.key !in heroKeys }
 
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(14.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = PaddingValues(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        item { RpmDial(rpm, Modifier.fillMaxWidth()) }
+        item { SpeedHex(speed) }
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                NeonGauge("Giri", rpm, 5000.0, "rpm", Neon.Cyan, Modifier.weight(1f))
-                NeonGauge("Velocità", speed, 220.0, "km/h", Neon.Magenta, Modifier.weight(1f))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                RacingTile(TileIcon.TEMP, "Temp", coolant, "°C", Neon.Red, Modifier.weight(1f))
+                RacingTile(TileIcon.TURBO, "Turbo", state.boostKpa?.div(100.0), "bar", Neon.Lime, Modifier.weight(1f))
+                RacingTile(TileIcon.LOAD, "Load", load, "%", Neon.Cyan, Modifier.weight(1f))
+                RacingTile(TileIcon.VOLT, "Volt", volt, "V", Neon.Red, Modifier.weight(1f))
             }
         }
-        if (state.boostKpa != null) {
-            item {
-                NeonPanel {
-                    NeonBar("Turbo / Sovralimentazione", state.boostKpa / 100.0, 2.0, "bar", Neon.Lime)
+        if (extra.isNotEmpty()) {
+            items(extra.chunked(2)) { rowPids ->
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    rowPids.forEach { pid -> NeonTile(pid, state.values[pid.key], Modifier.weight(1f)) }
+                    if (rowPids.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
         }
-        items(tiles.chunked(2)) { rowPids ->
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                rowPids.forEach { pid ->
-                    NeonTile(pid, state.values[pid.key], Modifier.weight(1f))
-                }
-                if (rowPids.size == 1) Spacer(Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun RpmDial(rpm: Double?, modifier: Modifier) {
+    Box(modifier, contentAlignment = Alignment.Center) {
+        Tachometer(rpm, 7000.0, Modifier.fillMaxWidth())
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.offset(y = 36.dp),
+        ) {
+            Text("RPM  x1000", color = Neon.Muted, fontSize = 10.sp, letterSpacing = 1.sp)
+            SevenSegment(rpm?.let { it.toInt().toString() } ?: "0", Neon.Lime,
+                Modifier.height(46.dp).width(170.dp))
+            Text("RPM", color = Neon.Lime, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+        }
+    }
+}
+
+@Composable
+private fun SpeedHex(speed: Double?) {
+    Box(Modifier.fillMaxWidth().height(116.dp), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+            val inset = h * 0.16f
+            val chev = w * 0.08f
+            val path = Path().apply {
+                moveTo(chev, inset)
+                lineTo(w - chev, inset)
+                lineTo(w, h / 2f)
+                lineTo(w - chev, h - inset)
+                lineTo(chev, h - inset)
+                lineTo(0f, h / 2f)
+                close()
+            }
+            listOf(10f to 0.15f, 5f to 0.35f, 2.5f to 1f).forEach { (wd, a) ->
+                drawPath(path, Neon.Lime.copy(alpha = a), style = Stroke(wd))
             }
         }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            SevenSegment(speed?.let { it.toInt().toString() } ?: "0", Neon.Lime,
+                Modifier.height(56.dp).width(140.dp))
+            Text("km/h", color = Neon.Lime, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+        }
+    }
+}
+
+@Composable
+private fun RacingTile(
+    icon: TileIcon, label: String, value: Double?, unit: String, color: Color, modifier: Modifier,
+) {
+    val shown = value?.let {
+        if (it % 1.0 == 0.0 && unit != "bar" && unit != "V") it.toInt().toString() else "%.1f".format(it)
+    } ?: "—"
+    Column(
+        modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(Neon.Panel)
+            .border(1.5.dp, color.copy(alpha = 0.65f), RoundedCornerShape(12.dp))
+            .padding(vertical = 10.dp, horizontal = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(label.uppercase(), color = Neon.Muted, fontSize = 10.sp, letterSpacing = 1.sp)
+        Canvas(Modifier.size(30.dp)) {
+            drawTileIcon(icon, Offset(size.width / 2f, size.height / 2f), size.minDimension, color)
+        }
+        Text(shown, color = Neon.Text, fontSize = 22.sp, fontWeight = FontWeight.Black)
+        Text(unit, color = color, fontSize = 10.sp, fontWeight = FontWeight.Bold)
     }
 }
 
