@@ -29,7 +29,8 @@ class MockTransport(private val hasDtcs: Boolean = true) : Transport() {
     private fun respond(command: String): String = when {
         command.startsWith("AT") -> respondAt(command)
         command.startsWith("01") -> respondMode01(command)
-        command == "03" -> if (hasDtcs) "43 01 33 04 20" else "43 00 00"
+        // Formato CAN (ISO 15765-4): "43 NN <coppie>", NN = numero di DTC.
+        command == "03" -> if (hasDtcs) "43 02 01 33 04 20" else "43 00 00 00 00 00 00"
         command == "04" -> "44"
         else -> "NO DATA"
     }

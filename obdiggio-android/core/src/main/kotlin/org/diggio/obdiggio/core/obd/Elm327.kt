@@ -59,7 +59,12 @@ class Elm327(
     fun readDtcs(): List<Dtc> {
         val bytes = parseHexBytes(query("03"))
         val data = stripModeHeader(bytes, mode = 0x03, pid = null) ?: return emptyList()
-        return Dtc.decodeBytes(data)
+        // Su CAN (ISO 15765-4, es. Nissan Qashqai) la risposta è "43 NN <coppie>"
+        // con NN = numero di DTC; su ISO 9141/KWP il conteggio non c'è. I DTC
+        // sono coppie di byte: se i byte dati sono in numero dispari, il primo è
+        // il conteggio e va scartato.
+        val payload = if (data.size % 2 == 1) data.copyOfRange(1, data.size) else data
+        return Dtc.decodeBytes(payload)
     }
 
     /** Cancella i codici e spegne la spia MIL (Mode 04). True se l'ECU conferma (`44`). */
