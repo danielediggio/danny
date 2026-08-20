@@ -1,0 +1,77 @@
+name: Build Android APK
+
+# Compila la versione Kotlin nativa (obdiggio-android) con Gradle.
+# I runner GitHub hanno già l'Android SDK: build semplice e affidabile.
+#
+#   * "Run workflow" (workflow_dispatch), oppure
+#   * push sul branch che tocca obdiggio-android/.
+#
+# L'APK esce come artifact e come Release (tag apk-android-debug), con link
+# diretto installabile dal telefono.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - claude/obd2-program-keevsv
+    paths:
+      - "obdiggio-android/**"
+      - ".github/workflows/build-android-apk.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: obdiggio-android
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Test del modulo core
+        run: ./gradlew :core:test
+
+      - name: Build APK (debug)
+        run: ./gradlew :app:assembleDebug
+
+      - name: Pubblica l'APK come artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: obdiggio-android-debug-apk
+          path: obdiggio-android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Pubblica l'APK come Release (link diretto per il telefono)
+        if: ${{ success() }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-android-debug
+          name: obdiggio Android — APK debug (Kotlin)
+          body: |
+            APK di debug della versione Kotlin nativa di obdiggio.
+
+            - Branch: `${{ github.ref_name }}`
+            - Commit: ${{ github.sha }}
+            - Build:  ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            Dal telefono: tocca il file `.apk` qui sotto per scaricarlo, poi
+            installalo (serve attivare "Installa app da origini sconosciute").
+          prerelease: true
+          files: obdiggio-android/app/build/outputs/apk/debug/*.apk
+          fail_on_unmatched_files: true
