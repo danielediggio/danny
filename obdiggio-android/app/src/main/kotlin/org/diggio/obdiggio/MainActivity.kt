@@ -149,17 +149,34 @@ private fun DtcScreen(viewModel: ObdViewModel, state: UiState) {
             ) { Text("Cancella errori") }
         }
         if (!state.connected) CenterHint("Prima connettiti a un adattatore.")
+
+        state.message?.let {
+            Text(it, color = MaterialTheme.colorScheme.primary, fontSize = 14.sp)
+        }
+
+        val groups = state.dtcGroups
         when {
             state.dtcBusy -> Text("Operazione in corso…")
-            state.dtcs == null -> Text("Premi \"Leggi errori\".")
-            state.dtcs.isEmpty() -> Text("Nessun codice di errore memorizzato ✓",
+            groups == null -> Text("Premi \"Leggi errori\".")
+            groups.isEmpty() -> Text("Nessun codice presente ✓",
                 color = MaterialTheme.colorScheme.secondary)
             else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(state.dtcs) { dtc ->
-                    Card(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(12.dp)) {
-                            Text(dtc.code, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                            Text(dtc.description, fontSize = 14.sp)
+                groups.forEach { group ->
+                    item {
+                        Text(
+                            "${group.label} (${group.codes.size})",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
+                    }
+                    items(group.codes) { dtc ->
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(12.dp)) {
+                                Text(dtc.code, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                Text(dtc.description, fontSize = 14.sp)
+                            }
                         }
                     }
                 }

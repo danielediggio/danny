@@ -56,10 +56,19 @@ class Elm327(
         return pid.decode(data)
     }
 
-    fun readDtcs(): List<Dtc> {
-        val bytes = parseHexBytes(query("03"))
-        val data = stripModeHeader(bytes, mode = 0x03, pid = null) ?: return emptyList()
-        // Su CAN (ISO 15765-4, es. Nissan Qashqai) la risposta è "43 NN <coppie>"
+    /** Codici memorizzati/confermati (Mode 03). */
+    fun readDtcs(): List<Dtc> = readDtcsForMode("03", 0x03)
+
+    /** Codici in sospeso — non ancora confermati (Mode 07). */
+    fun readPendingDtcs(): List<Dtc> = readDtcsForMode("07", 0x07)
+
+    /** Codici permanenti — non cancellabili con Mode 04 (Mode 0A). */
+    fun readPermanentDtcs(): List<Dtc> = readDtcsForMode("0A", 0x0A)
+
+    private fun readDtcsForMode(command: String, responseMode: Int): List<Dtc> {
+        val bytes = parseHexBytes(query(command))
+        val data = stripModeHeader(bytes, mode = responseMode, pid = null) ?: return emptyList()
+        // Su CAN (ISO 15765-4, es. Nissan Qashqai) la risposta è "4X NN <coppie>"
         // con NN = numero di DTC; su ISO 9141/KWP il conteggio non c'è. I DTC
         // sono coppie di byte: se i byte dati sono in numero dispari, il primo è
         // il conteggio e va scartato.

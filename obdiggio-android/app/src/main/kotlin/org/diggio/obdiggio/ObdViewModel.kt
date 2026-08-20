@@ -22,13 +22,16 @@ import org.diggio.obdiggio.core.obd.Transport
 /** PID mostrati sul cruscotto, nell'ordine. */
 private val DASHBOARD_CODES = listOf(0x0C, 0x0D, 0x05, 0x11, 0x04, 0x0F, 0x10, 0x42)
 
+/** Un gruppo di DTC con la sua etichetta (Memorizzati / In sospeso / Permanenti). */
+data class DtcGroup(val label: String, val codes: List<Dtc>)
+
 data class UiState(
     val connecting: Boolean = false,
     val connected: Boolean = false,
     val usingMock: Boolean = false,
     val status: String = "Non connesso",
     val values: Map<String, PidResult> = emptyMap(),
-    val dtcs: List<Dtc>? = null,
+    val dtcGroups: List<DtcGroup>? = null,
     val dtcBusy: Boolean = false,
     val message: String? = null,
 )
@@ -95,23 +98,57 @@ class ObdViewModel(app: Application) : AndroidViewModel(app) {
 
     fun readDtcs() {
         val e = elm ?: return
-        _state.update { it.copy(dtcBusy = true) }
+        _state.update { it.copy(dtcBusy = true, message = null) }
         viewModelScope.launch(Dispatchers.IO) {
-            val dtcs = try { e.readDtcs() } catch (ex: Exception) { emptyList() }
-            _state.update { it.copy(dtcs = dtcs, dtcBusy = false) }
+            val groups = readAllDtcGroups(e)
+            val total = groups.sumOf { it.codes.size }
+            _state.update {
+                it.copy(
+                    dtcGroups = groups,
+                    dtcBusy = false,
+                    message = if (total == 0) "Nessun codice presente ✓"
+                    else "Trovati $total codici (memorizzati/in sospeso/permanenti).",
+                )
+            }
         }
     }
 
     fun clearDtcs() {
         val e = elm ?: return
-        _state.update { it.copy(dtcBusy = true) }
+        _state.update { it.copy(dtcBusy = true, message = null) }
         viewModelScope.launch(Dispatchers.IO) {
             val ok = try { e.clearDtcs() } catch (ex: Exception) { false }
-            _state.update {
-                it.copy(dtcBusy = false, dtcs = if (ok) emptyList() else it.dtcs,
-                    message = if (ok) "Errori cancellati, spia MIL spenta ✓" else "Cancellazione non confermata")
+            if (ok) {
+                // Rileggi per confermare l'effettiva cancellazione.
+                val groups = readAllDtcGroups(e)
+                val permanent = groups.firstOrNull { it.label.startsWith("Permanenti") }?.codes ?: emptyList()
+                _state.update {
+                    it.copy(
+                        dtcBusy = false,
+                        dtcGroups = groups,
+                        message = if (permanent.isEmpty())
+                            "Errori cancellati, spia MIL spenta ✓"
+                        else "Cancellati i codici cancellabili. I permanenti restano finché il guasto non è risolto e il ciclo di guida non li azzera.",
+                    )
+                }
+            } else {
+                _state.update {
+                    it.copy(
+                        dtcBusy = false,
+                        message = "Cancellazione rifiutata dall'ECU. Falla a QUADRO ACCESO e MOTORE SPENTO, poi riprova.",
+                    )
+                }
             }
         }
+    }
+
+    private fun readAllDtcGroups(e: Elm327): List<DtcGroup> {
+        fun safe(block: () -> List<Dtc>) = try { block() } catch (ex: Exception) { emptyList() }
+        return listOf(
+            DtcGroup("Memorizzati", safe { e.readDtcs() }),
+            DtcGroup("In sospeso", safe { e.readPendingDtcs() }),
+            DtcGroup("Permanenti", safe { e.readPermanentDtcs() }),
+        ).filter { it.codes.isNotEmpty() }
     }
 
     fun disconnect() {
