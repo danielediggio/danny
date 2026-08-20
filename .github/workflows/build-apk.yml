@@ -1,0 +1,80 @@
+name: Build APK
+
+# Compila l'APK di obdiggio sui runner cloud di GitHub (rete aperta: nessun
+# blocco ai download di github richiesti da Buildozer/python-for-android).
+#
+# Due modi per avviarla:
+#   * "Run workflow" (workflow_dispatch) dalla tab Actions — scegli il branch
+#     claude/obd2-program-keevsv per compilare il codice dell'app.
+#   * automaticamente ad ogni push su quel branch che tocca obdiggio/.
+#
+# L'APK finisce come artifact scaricabile della run. Se configuri i tre secret
+# email (vedi sotto) viene anche inviato via email in allegato.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - claude/obd2-program-keevsv
+    paths:
+      - "obdiggio/**"
+      - ".github/workflows/build-apk.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # I secret vengono esposti come env per poterli testare negli `if:`.
+    env:
+      MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
+      MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
+      MAIL_TO: ${{ secrets.MAIL_TO }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verifica presenza progetto
+        run: |
+          if [ ! -f obdiggio/buildozer.spec ]; then
+            echo "::error::obdiggio/buildozer.spec non trovato. Avvia la build sul branch claude/obd2-program-keevsv."
+            exit 1
+          fi
+
+      - name: Build APK (debug) con Buildozer
+        uses: ArtemSBulgakov/buildozer-action@v1
+        id: buildozer
+        with:
+          command: buildozer android debug
+          directory: obdiggio
+          buildozer_version: stable
+
+      - name: Pubblica l'APK come artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: obdiggio-debug-apk
+          path: obdiggio/bin/*.apk
+          if-no-files-found: error
+
+      - name: Invia l'APK via email (opzionale)
+        if: ${{ success() && env.MAIL_USERNAME != '' && env.MAIL_TO != '' }}
+        continue-on-error: true
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          from: obdiggio CI <${{ secrets.MAIL_USERNAME }}>
+          to: ${{ secrets.MAIL_TO }}
+          subject: "obdiggio — APK build ${{ github.run_number }}"
+          body: |
+            Ciao!
+            In allegato trovi l'APK di obdiggio appena compilato.
+
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.sha }}
+            Run:    ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          attachments: obdiggio/bin/*.apk
