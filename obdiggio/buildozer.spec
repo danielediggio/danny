@@ -35,6 +35,11 @@ android.archs = arm64-v8a,armeabi-v7a
 # Accetta automaticamente le licenze SDK (necessario in CI/headless).
 android.accept_sdk_license = True
 
+# Fissa python-for-android a una release stabile con Python 3.11: il master
+# tira CPython 3.14, il cui C-API rompe il codice pre-generato di Kivy 2.3.0
+# (_PyLong_AsByteArray, preadv/pwritev, ...).
+p4a.branch = v2024.01.21
+
 # Mantieni lo schermo acceso durante l'uso in auto.
 android.wakelock = 1
 
