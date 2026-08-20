@@ -1,0 +1,6 @@
+# Dipendenze per lo sviluppo/esecuzione su desktop (modalita' simulatore).
+# Su Android le dipendenze sono gestite da buildozer.spec (kivy, able, pyjnius).
+kivy>=2.3.0
+
+# Solo per i test:
+pytest>=7.0

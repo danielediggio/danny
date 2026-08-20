@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Buildozer / python-for-android
+.buildozer/
+bin/
+*.apk
+*.aab
+
+# Test / cache
+.pytest_cache/
+.coverage
