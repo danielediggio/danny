@@ -15,12 +15,21 @@ import org.diggio.obdiggio.ble.BleTransport
 import org.diggio.obdiggio.core.obd.Dtc
 import org.diggio.obdiggio.core.obd.Elm327
 import org.diggio.obdiggio.core.obd.MockTransport
+import org.diggio.obdiggio.core.obd.Pid
 import org.diggio.obdiggio.core.obd.PidResult
 import org.diggio.obdiggio.core.obd.Pids
 import org.diggio.obdiggio.core.obd.Transport
 
-/** PID mostrati sul cruscotto, nell'ordine. */
-private val DASHBOARD_CODES = listOf(0x0C, 0x0D, 0x05, 0x11, 0x04, 0x0F, 0x10, 0x42)
+/** Ordine di preferenza dei PID sul cruscotto (i primi sono le lancette hero). */
+private val CANDIDATE_CODES = listOf(
+    0x0C, 0x0D, 0x0B, 0x33,          // RPM, velocità, MAP, barometrica (per il boost)
+    0x05, 0x5C, 0x0F, 0x10, 0x04,    // temp refr., temp olio, IAT, MAF, carico
+    0x11, 0x49, 0x2C, 0x2D, 0x23,    // farfalla, pedale, EGR comandata/errore, rail
+    0x2F, 0x42, 0x46, 0x1F, 0x21, 0x5E,
+)
+
+/** Fallback se il rilevamento dei PID supportati non riesce. */
+private val DEFAULT_CODES = listOf(0x0C, 0x0D, 0x05, 0x11, 0x04, 0x0F, 0x10, 0x42)
 
 /** Un gruppo di DTC con la sua etichetta (Memorizzati / In sospeso / Permanenti). */
 data class DtcGroup(val label: String, val codes: List<Dtc>)
@@ -31,6 +40,7 @@ data class UiState(
     val usingMock: Boolean = false,
     val status: String = "Non connesso",
     val values: Map<String, PidResult> = emptyMap(),
+    val boostKpa: Double? = null,       // sovralimentazione turbo = MAP - barometrica
     val dtcGroups: List<DtcGroup>? = null,
     val dtcBusy: Boolean = false,
     val message: String? = null,
@@ -41,7 +51,9 @@ class ObdViewModel(app: Application) : AndroidViewModel(app) {
     private val _state = MutableStateFlow(UiState())
     val state = _state.asStateFlow()
 
-    val dashboardPids = DASHBOARD_CODES.mapNotNull { Pids[it] }
+    /** PID effettivamente mostrati: impostato alla connessione in base al veicolo. */
+    var dashboardPids: List<Pid> = DEFAULT_CODES.mapNotNull { Pids[it] }
+        private set
 
     private var elm: Elm327? = null
     private var transport: Transport? = null
@@ -65,10 +77,13 @@ class ObdViewModel(app: Application) : AndroidViewModel(app) {
                 val e = Elm327(t)
                 e.connect()
                 elm = e
-                val probe = try { e.probeSupportedPids() } catch (ex: Exception) { "errore: ${ex.message}" }
+                // Rileva i PID supportati dal veicolo e costruisci il cruscotto.
+                val supported = try { e.supportedPids() } catch (ex: Exception) { emptySet() }
+                dashboardPids = CANDIDATE_CODES.filter { it in supported }.mapNotNull { Pids[it] }
+                    .ifEmpty { DEFAULT_CODES.mapNotNull { Pids[it] } }
                 _state.update {
                     it.copy(connecting = false, connected = true, status = "Connesso ✓",
-                        message = "Diagnostica 0100 → \"$probe\"")
+                        message = "Veicolo connesso — ${dashboardPids.size} parametri disponibili")
                 }
                 startPolling()
             } catch (ex: Exception) {
@@ -89,11 +104,21 @@ class ObdViewModel(app: Application) : AndroidViewModel(app) {
                 val e = elm ?: break
                 for (pid in dashboardPids) {
                     val result = try { e.readPid(pid) } catch (ex: Exception) { continue }
-                    _state.update { it.copy(values = it.values + (pid.key to result)) }
-                    delay(200)
+                    _state.update { st ->
+                        val values = st.values + (pid.key to result)
+                        st.copy(values = values, boostKpa = computeBoost(values))
+                    }
+                    delay(150)
                 }
             }
         }
+    }
+
+    /** Sovralimentazione turbo (kPa relativi) = pressione collettore - barometrica. */
+    private fun computeBoost(values: Map<String, PidResult>): Double? {
+        val map = values[Pids[0x0B]?.key]?.value
+        val baro = values[Pids[0x33]?.key]?.value ?: 101.3
+        return if (map != null) (map - baro).coerceAtLeast(0.0) else null
     }
 
     fun readDtcs() {

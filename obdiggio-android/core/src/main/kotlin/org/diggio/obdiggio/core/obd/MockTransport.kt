@@ -47,8 +47,13 @@ class MockTransport(private val hasDtcs: Boolean = true) : Transport() {
         fun frame(vararg dataBytes: Int): String =
             (listOf("41", "%02X".format(pid)) + dataBytes.map { "%02X".format(it) }).joinToString(" ")
         return when (pid) {
+            // Maschere dei PID supportati (per il rilevamento automatico).
+            0x00 -> "41 00 18 3B 80 01"
+            0x20 -> "41 20 00 02 20 01"
+            0x40 -> "41 40 44 80 00 00"
             0x04 -> frame((30 + 20 * (0.5 + 0.5 * sin(t))).toInt())
             0x05 -> frame(minOf(215, 90 + 40 + (3 * sin(t / 5)).toInt()))
+            0x0B -> frame((104 + 18 * (0.5 + 0.5 * sin(t))).toInt()) // MAP (kPa)
             0x0C -> {
                 val raw = ((800 + 300 * (0.5 + 0.5 * sin(t / 2))) * 4).toInt()
                 frame((raw shr 8) and 0xFF, raw and 0xFF)
@@ -61,11 +66,13 @@ class MockTransport(private val hasDtcs: Boolean = true) : Transport() {
             }
             0x11 -> frame((255 * 0.15).toInt())
             0x2F -> frame((255 * 0.62).toInt())
+            0x33 -> frame(101)                                       // barometrica (kPa)
             0x42 -> {
                 val raw = (12300 + Random.nextDouble(-100.0, 200.0)).toInt()
                 frame((raw shr 8) and 0xFF, raw and 0xFF)
             }
             0x46 -> frame(22 + 40)
+            0x49 -> frame((255 * 0.12).toInt())                      // pedale acceleratore
             else -> "NO DATA"
         }
     }

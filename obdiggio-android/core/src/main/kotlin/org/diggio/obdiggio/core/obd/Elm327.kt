@@ -25,6 +25,29 @@ class Elm327(
     /** Interroga i PID supportati (0100) e ritorna la risposta grezza ripulita (diagnostica). */
     fun probeSupportedPids(): String = query("0100")
 
+    /**
+     * Rileva l'insieme dei PID Mode 01 supportati dal veicolo, interrogando le
+     * maschere 0100/0120/0140/... (ognuna descrive 32 PID; l'ultimo bit indica
+     * se esiste il gruppo successivo).
+     */
+    fun supportedPids(): Set<Int> {
+        val supported = mutableSetOf<Int>()
+        var base = 0x00
+        while (base <= 0xC0) {
+            val data = stripModeHeader(parseHexBytes(query("01%02X".format(base))), 0x01, base)
+            if (data == null || data.size < 4) break
+            val bits = (data[0].toLong() shl 24) or (data[1].toLong() shl 16) or
+                (data[2].toLong() shl 8) or data[3].toLong()
+            for (i in 0 until 32) {
+                if ((bits shr (31 - i)) and 1L == 1L) supported.add(base + i + 1)
+            }
+            val next = base + 0x20
+            if (!supported.contains(next)) break
+            base = next
+        }
+        return supported
+    }
+
     fun close() {
         initialized = false
         transport.close()

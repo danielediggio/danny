@@ -2,6 +2,7 @@ package org.diggio.obdiggio.core.obd
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DtcTest {
@@ -26,8 +27,13 @@ class DtcTest {
         assertEquals(listOf("P0133", "P0420"), dtcs.map { it.code })
     }
 
-    @Test fun descriptionKnownAndFallback() {
+    @Test fun descriptionKnownAndStructuralFallback() {
         assertEquals("Sonda lambda risposta lenta (B1S1)", Dtc("P0133").description)
-        assertEquals("Codice generico — consultare manuale del veicolo", Dtc("P9999").description)
+        // Codice non elencato: descrizione strutturale (non un generico "consultare manuale").
+        assertTrue(Dtc("P3400").description.startsWith("Motore"))
+        // Seconda cifra 1 -> specifico del costruttore.
+        assertTrue("costruttore" in Dtc("P1234").description)
+        // Rete U: area comunicazione.
+        assertTrue("comunicazione" in Dtc("U1234").description)
     }
 }

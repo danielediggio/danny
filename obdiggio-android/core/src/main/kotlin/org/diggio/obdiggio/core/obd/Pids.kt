@@ -62,6 +62,8 @@ object Pids {
     private val fuelTrim: (IntArray) -> Double = { it[0] / 1.28 - 100.0 }
     private val runTime: (IntArray) -> Double = { (it[0] * 256 + it[1]).toDouble() }
     private val distance: (IntArray) -> Double = { (it[0] * 256 + it[1]).toDouble() }
+    private val railPressure: (IntArray) -> Double = { (it[0] * 256 + it[1]) * 10.0 }
+    private val egrError: (IntArray) -> Double = { it[0] / 1.28 - 100.0 }
 
     val all: List<Pid> = listOf(
         Pid(0x04, "Carico motore", "%", 1, 0.0, 100.0, percent),
@@ -78,12 +80,21 @@ object Pids {
         Pid(0x11, "Posizione farfalla", "%", 1, 0.0, 100.0, percent),
         Pid(0x1F, "Tempo motore acceso", "s", 2, 0.0, 65535.0, runTime),
         Pid(0x21, "Distanza con MIL", "km", 2, 0.0, 65535.0, distance),
+        Pid(0x22, "Pressione rail (rel.)", "kPa", 2, 0.0, 5177.0) { (it[0] * 256 + it[1]) * 0.079 },
+        Pid(0x23, "Pressione rail", "kPa", 2, 0.0, 655350.0, railPressure),
+        Pid(0x2C, "EGR comandata", "%", 1, 0.0, 100.0, percent),
+        Pid(0x2D, "Errore EGR", "%", 1, -100.0, 99.0, egrError),
         Pid(0x2F, "Livello carburante", "%", 1, 0.0, 100.0, percent),
         Pid(0x31, "Distanza da azzeramento", "km", 2, 0.0, 65535.0, distance),
+        Pid(0x33, "Pressione barometrica", "kPa", 1, 0.0, 255.0, intakePressure),
         Pid(0x42, "Tensione modulo", "V", 2, 0.0, 65.0, controlModuleVoltage),
         Pid(0x43, "Carico assoluto", "%", 2, 0.0, 25700.0) { (it[0] * 256 + it[1]) * 100.0 / 255.0 },
+        Pid(0x45, "Farfalla relativa", "%", 1, 0.0, 100.0, percent),
         Pid(0x46, "Temp ambiente", "°C", 1, -40.0, 215.0, temp),
+        Pid(0x49, "Pedale acceleratore", "%", 1, 0.0, 100.0, percent),
+        Pid(0x4C, "Farfalla comandata", "%", 1, 0.0, 100.0, percent),
         Pid(0x5C, "Temp olio motore", "°C", 1, -40.0, 215.0, temp),
+        Pid(0x5E, "Consumo carburante", "L/h", 2, 0.0, 3277.0) { (it[0] * 256 + it[1]) * 0.05 },
     )
 
     private val byCode: Map<Int, Pid> = all.associateBy { it.code }
