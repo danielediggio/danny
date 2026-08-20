@@ -26,8 +26,10 @@ android.permissions = BLUETOOTH,BLUETOOTH_ADMIN,BLUETOOTH_SCAN,BLUETOOTH_CONNECT
 android.manifest_placeholders = usesCleartextTraffic=false
 
 android.api = 34
-android.minapi = 23
-android.ndk_api = 23
+# minapi/ndk_api 24: CPython recente usa preadv/pwritev, disponibili su Android
+# solo da API 24 (Android 7.0). Con 23 la build di CPython fallisce.
+android.minapi = 24
+android.ndk_api = 24
 android.archs = arm64-v8a,armeabi-v7a
 
 # Accetta automaticamente le licenze SDK (necessario in CI/headless).
