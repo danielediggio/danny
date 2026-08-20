@@ -29,7 +29,9 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # 22.04: autoconf/libtool compatibili con l'autogen di libffi (su 24.04
+    # fallisce con "possibly undefined macro: LT_SYS_SYMBOL_USCORE").
+    runs-on: ubuntu-22.04
     env:
       MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
       MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
