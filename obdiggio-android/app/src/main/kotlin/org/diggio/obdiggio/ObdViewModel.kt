@@ -31,8 +31,14 @@ private val CANDIDATE_CODES = listOf(
 /** Fallback se il rilevamento dei PID supportati non riesce. */
 private val DEFAULT_CODES = listOf(0x0C, 0x0D, 0x05, 0x11, 0x04, 0x0F, 0x10, 0x42)
 
+/** PID letti dallo snapshot freeze frame. */
+private val FREEZE_CODES = listOf(0x0C, 0x0D, 0x04, 0x05, 0x0F, 0x10, 0x11, 0x0B, 0x0E, 0x33, 0x1F)
+
 /** Un gruppo di DTC con la sua etichetta (Memorizzati / In sospeso / Permanenti). */
 data class DtcGroup(val label: String, val codes: List<Dtc>)
+
+/** Snapshot dei parametri congelati al momento del guasto (Mode 02). */
+data class FreezeFrame(val dtc: Dtc?, val values: List<PidResult>)
 
 data class UiState(
     val connecting: Boolean = false,
@@ -43,6 +49,8 @@ data class UiState(
     val boostKpa: Double? = null,       // sovralimentazione turbo = MAP - barometrica
     val dtcGroups: List<DtcGroup>? = null,
     val dtcBusy: Boolean = false,
+    val freeze: FreezeFrame? = null,
+    val freezeBusy: Boolean = false,
     val message: String? = null,
 )
 
@@ -163,6 +171,26 @@ class ObdViewModel(app: Application) : AndroidViewModel(app) {
                         message = "Cancellazione rifiutata dall'ECU. Falla a QUADRO ACCESO e MOTORE SPENTO, poi riprova.",
                     )
                 }
+            }
+        }
+    }
+
+    fun readFreezeFrame() {
+        val e = elm ?: return
+        _state.update { it.copy(freezeBusy = true, message = null) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val dtc = try { e.readFreezeFrameDtc() } catch (ex: Exception) { null }
+            val values = FREEZE_CODES.mapNotNull { Pids[it] }.mapNotNull { pid ->
+                val r = try { e.readFreezeFramePid(pid) } catch (ex: Exception) { null }
+                if (r?.value != null) r else null
+            }
+            _state.update {
+                it.copy(
+                    freezeBusy = false,
+                    freeze = FreezeFrame(dtc, values),
+                    message = if (dtc == null && values.isEmpty())
+                        "Nessun freeze frame memorizzato (nessun errore congelato)." else null,
+                )
             }
         }
     }

@@ -73,7 +73,9 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Tab(val label: String) { DASHBOARD("Cruscotto"), DTC("Errori"), CONNECT("Connessione") }
+private enum class Tab(val label: String) {
+    DASHBOARD("Cruscotto"), DTC("Errori"), FREEZE("Freeze"), CONNECT("Connessione")
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -121,6 +123,7 @@ private fun AppRoot(viewModel: ObdViewModel, onScanConnect: () -> Unit) {
             when (tab) {
                 Tab.DASHBOARD -> DashboardScreen(viewModel, state)
                 Tab.DTC -> DtcScreen(viewModel, state)
+                Tab.FREEZE -> FreezeScreen(viewModel, state)
                 Tab.CONNECT -> ConnectScreen(state, onScanConnect) { viewModel.connect(useMock = true) }
             }
         }
@@ -318,6 +321,50 @@ private fun DtcScreen(viewModel: ObdViewModel, state: UiState) {
                         ) {
                             Text(dtc.code, color = Neon.Cyan, fontWeight = FontWeight.Black, fontSize = 17.sp)
                             Text(dtc.description, color = Neon.Text, fontSize = 14.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FreezeScreen(viewModel: ObdViewModel, state: UiState) {
+    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        NeonButton("Leggi freeze frame", Neon.Cyan, state.connected && !state.freezeBusy,
+            Modifier.fillMaxWidth()) { viewModel.readFreezeFrame() }
+        Text("Fotografia dei parametri nell'istante in cui l'ECU ha registrato l'errore.",
+            color = Neon.Muted, fontSize = 12.sp)
+        if (!state.connected) CenterHint("Prima connettiti a un adattatore.")
+        state.message?.let { Text(it, color = Neon.Cyan, fontSize = 14.sp) }
+
+        val ff = state.freeze
+        when {
+            state.freezeBusy -> Text("Lettura in corso…", color = Neon.Muted)
+            ff == null -> Text("Premi \"Leggi freeze frame\".", color = Neon.Muted)
+            else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                ff.dtc?.let { dtc ->
+                    item {
+                        Column(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                                .background(Neon.Panel).border(1.5.dp, Neon.Magenta.copy(alpha = 0.7f),
+                                    RoundedCornerShape(12.dp)).padding(12.dp),
+                        ) {
+                            Text("ERRORE CHE HA CONGELATO I DATI", color = Neon.Magenta,
+                                fontWeight = FontWeight.Black, fontSize = 12.sp, letterSpacing = 1.sp)
+                            Text(dtc.code, color = Neon.Cyan, fontWeight = FontWeight.Black, fontSize = 18.sp)
+                            Text(dtc.description, color = Neon.Text, fontSize = 14.sp)
+                        }
+                    }
+                }
+                if (ff.values.isEmpty() && ff.dtc == null) {
+                    item { Text("Nessun dato congelato disponibile.", color = Neon.Muted) }
+                } else {
+                    items(ff.values.chunked(2)) { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            row.forEach { r -> NeonTile(r.pid, r, Modifier.weight(1f)) }
+                            if (row.size == 1) Spacer(Modifier.weight(1f))
                         }
                     }
                 }

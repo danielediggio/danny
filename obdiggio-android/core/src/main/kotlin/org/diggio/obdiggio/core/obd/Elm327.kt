@@ -99,6 +99,28 @@ class Elm327(
         return Dtc.decodeBytes(payload)
     }
 
+    // --- Freeze frame (Mode 02) ------------------------------------------
+    // La risposta è "42 <PID> <frame> <dati>": come il Mode 01 ma con un byte
+    // di indice frame (di solito 00) tra il PID e i dati.
+
+    /** Legge un PID dallo snapshot congelato al momento del guasto (frame 0). */
+    fun readFreezeFramePid(pid: Pid): PidResult {
+        val bytes = parseHexBytes(query("02%02X00".format(pid.code)))
+        val idx = bytes.indexOf(0x42)
+        if (idx == -1 || idx + 2 >= bytes.size || bytes[idx + 1] != pid.code) {
+            return PidResult(pid, null, pid.unit)
+        }
+        return pid.decode(bytes.copyOfRange(idx + 3, bytes.size)) // salta PID + frame
+    }
+
+    /** DTC che ha generato il freeze frame (Mode 02, PID 02). */
+    fun readFreezeFrameDtc(): Dtc? {
+        val bytes = parseHexBytes(query("020200"))
+        val idx = bytes.indexOf(0x42)
+        if (idx == -1 || idx + 4 >= bytes.size || bytes[idx + 1] != 0x02) return null
+        return Dtc.decode(bytes[idx + 3], bytes[idx + 4])
+    }
+
     /** Cancella i codici e spegne la spia MIL (Mode 04). True se l'ECU conferma (`44`). */
     fun clearDtcs(): Boolean = parseHexBytes(query("04")).contains(0x44)
 

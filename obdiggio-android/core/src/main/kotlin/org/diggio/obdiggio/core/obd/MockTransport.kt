@@ -28,6 +28,7 @@ class MockTransport(private val hasDtcs: Boolean = true) : Transport() {
 
     private fun respond(command: String): String = when {
         command.startsWith("AT") -> respondAt(command)
+        command.startsWith("02") -> respondMode02(command)
         command.startsWith("01") -> respondMode01(command)
         // Formato CAN (ISO 15765-4): "43 NN <coppie>", NN = numero di DTC.
         command == "03" -> if (hasDtcs) "43 02 01 33 04 20" else "43 00 00 00 00 00 00"
@@ -39,6 +40,28 @@ class MockTransport(private val hasDtcs: Boolean = true) : Transport() {
         "ATZ" -> "ELM327 v1.5"
         "ATRV" -> "%.1fV".format(12.2 + Random.nextDouble(-0.2, 0.4))
         else -> "OK"
+    }
+
+    // Freeze frame simulato (Mode 02): snapshot "al momento del guasto".
+    private fun respondMode02(command: String): String {
+        val pid = command.substring(2, 4).toIntOrNull(16) ?: return "NO DATA"
+        fun frame(vararg d: Int) =
+            (listOf("42", "%02X".format(pid), "00") + d.map { "%02X".format(it) }).joinToString(" ")
+        return when (pid) {
+            0x02 -> "42 02 00 01 04"                       // DTC che ha congelato: P0104
+            0x04 -> frame((255 * 0.78).toInt())            // carico 78%
+            0x05 -> frame(92 + 40)                         // refrigerante 92°C
+            0x0B -> frame(158)                             // MAP 158 kPa
+            0x0C -> { val r = 1850 * 4; frame((r shr 8) and 0xFF, r and 0xFF) } // 1850 rpm
+            0x0D -> frame(62)                              // 62 km/h
+            0x0E -> frame(128)                             // anticipo 0°
+            0x0F -> frame(35 + 40)                         // aria aspirata 35°C
+            0x10 -> { val r = 1500; frame((r shr 8) and 0xFF, r and 0xFF) }     // MAF 15 g/s
+            0x11 -> frame((255 * 0.42).toInt())            // farfalla 42%
+            0x1F -> { val r = 320; frame((r shr 8) and 0xFF, r and 0xFF) }      // 320 s dall'avvio
+            0x33 -> frame(101)                             // barometrica
+            else -> "NO DATA"
+        }
     }
 
     private fun respondMode01(command: String): String {
