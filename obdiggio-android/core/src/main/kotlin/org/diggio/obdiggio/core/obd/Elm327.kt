@@ -17,7 +17,13 @@ class Elm327(
         if (!transport.isConnected) transport.open()
         initialize()
         initialized = true
+        // Warm-up: la prima richiesta OBD fa negoziare il protocollo (SEARCHING…);
+        // la eseguiamo qui così le letture successive sono già pronte.
+        try { query("0100") } catch (_: Exception) {}
     }
+
+    /** Interroga i PID supportati (0100) e ritorna la risposta grezza ripulita (diagnostica). */
+    fun probeSupportedPids(): String = query("0100")
 
     fun close() {
         initialized = false
@@ -70,7 +76,7 @@ class Elm327(
             "ATZ" to 1000L,   // reset
             "ATE0" to 300L,   // echo off
             "ATL0" to 300L,   // linefeed off
-            "ATS0" to 300L,   // spazi off
+            "ATS1" to 300L,   // spazi ON: risposte "41 0C 1A F8" (il parser separa sugli spazi)
             "ATH0" to 300L,   // header off
             "ATSP0" to 300L,  // protocollo automatico
         )
@@ -90,10 +96,18 @@ class Elm327(
          */
         fun parseHexBytes(response: String): IntArray {
             val out = mutableListOf<Int>()
-            for (tok in response.uppercase().split(Regex("\\s+"))) {
-                if (tok.endsWith(":")) continue
-                if (tok.length == 2 && tok[0] in HEX && tok[1] in HEX) {
-                    out.add(tok.toInt(16))
+            // I marcatori di frame ISO-TP ("0:", "1:") vengono separati dai dati.
+            val cleaned = response.uppercase().replace(":", " ")
+            for (tok in cleaned.split(Regex("\\s+"))) {
+                if (tok.isEmpty()) continue
+                if (!tok.all { it in HEX }) continue
+                // Token esadecimale a byte interi: lo spezziamo in coppie, così
+                // funziona sia con spazi ("41 0C") sia senza ("410C1AF8").
+                if (tok.length % 2 != 0) continue
+                var i = 0
+                while (i < tok.length) {
+                    out.add(tok.substring(i, i + 2).toInt(16))
+                    i += 2
                 }
             }
             return out.toIntArray()

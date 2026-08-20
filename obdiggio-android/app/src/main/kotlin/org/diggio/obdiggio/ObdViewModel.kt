@@ -62,8 +62,10 @@ class ObdViewModel(app: Application) : AndroidViewModel(app) {
                 val e = Elm327(t)
                 e.connect()
                 elm = e
+                val probe = try { e.probeSupportedPids() } catch (ex: Exception) { "errore: ${ex.message}" }
                 _state.update {
-                    it.copy(connecting = false, connected = true, status = "Connesso ✓")
+                    it.copy(connecting = false, connected = true, status = "Connesso ✓",
+                        message = "Diagnostica 0100 → \"$probe\"")
                 }
                 startPolling()
             } catch (ex: Exception) {
