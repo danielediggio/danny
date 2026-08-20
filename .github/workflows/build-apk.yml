@@ -25,7 +25,12 @@ on:
       - ".github/workflows/build-apk.yml"
 
 permissions:
-  contents: read
+  contents: write        # necessario per creare/aggiornare la Release
+
+# Un nuovo avvio annulla quello precedente ancora in corso sullo stesso branch.
+concurrency:
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -89,6 +94,26 @@ jobs:
           name: obdiggio-debug-apk
           path: obdiggio/bin/*.apk
           if-no-files-found: error
+
+      - name: Pubblica l'APK come Release (link diretto per il telefono)
+        if: ${{ success() }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-debug
+          name: obdiggio — APK debug
+          body: |
+            APK di debug di obdiggio compilato automaticamente.
+
+            - Branch: `${{ github.ref_name }}`
+            - Commit: ${{ github.sha }}
+            - Build:  ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            Dal telefono: tocca il file `.apk` qui sotto per scaricarlo, poi
+            installalo (serve attivare "Installa app da origini sconosciute").
+          prerelease: true
+          make_latest: true
+          files: obdiggio/bin/*.apk
+          fail_on_unmatched_files: true
 
       - name: Invia l'APK via email (opzionale)
         if: ${{ success() && env.MAIL_USERNAME != '' && env.MAIL_TO != '' }}
