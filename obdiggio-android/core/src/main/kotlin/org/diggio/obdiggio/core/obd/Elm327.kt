@@ -1,0 +1,123 @@
+package org.diggio.obdiggio.core.obd
+
+/**
+ * Driver ELM327 agnostico rispetto al trasporto: init AT, invio comandi,
+ * parsing risposte OBD (Mode 01 dati live, Mode 03 lettura DTC, Mode 04
+ * cancellazione, ATRV tensione).
+ */
+class Elm327(
+    val transport: Transport,
+    private val timeoutMs: Long = 5000,
+) {
+    private var initialized = false
+
+    val isConnected: Boolean get() = initialized && transport.isConnected
+
+    fun connect() {
+        if (!transport.isConnected) transport.open()
+        initialize()
+        initialized = true
+    }
+
+    fun close() {
+        initialized = false
+        transport.close()
+    }
+
+    fun initialize() {
+        transport.clear()
+        for ((cmd, settle) in INIT_COMMANDS) {
+            sendRaw(cmd)
+            Thread.sleep(settle)
+        }
+    }
+
+    private fun sendRaw(command: String): String {
+        transport.write((command + "\r").toByteArray(Charsets.US_ASCII))
+        val raw = transport.readUntil('>'.code.toByte(), timeoutMs)
+        return String(raw, Charsets.US_ASCII)
+    }
+
+    /** Invia un comando e ritorna la risposta ripulita (senza prompt né echo). */
+    fun query(command: String): String = clean(sendRaw(command))
+
+    // --- Query di alto livello ---
+
+    fun readPid(pid: Pid): PidResult {
+        val bytes = parseHexBytes(query(pid.command()))
+        val data = stripModeHeader(bytes, mode = 0x01, pid = pid.code)
+            ?: return PidResult(pid, null, pid.unit)
+        return pid.decode(data)
+    }
+
+    fun readDtcs(): List<Dtc> {
+        val bytes = parseHexBytes(query("03"))
+        val data = stripModeHeader(bytes, mode = 0x03, pid = null) ?: return emptyList()
+        return Dtc.decodeBytes(data)
+    }
+
+    /** Cancella i codici e spegne la spia MIL (Mode 04). True se l'ECU conferma (`44`). */
+    fun clearDtcs(): Boolean = parseHexBytes(query("04")).contains(0x44)
+
+    /** Tensione batteria letta dall'ELM327 (comando ATRV). */
+    fun voltage(): Double? {
+        val digits = query("ATRV").filter { it.isDigit() || it == '.' }
+        return digits.toDoubleOrNull()
+    }
+
+    companion object {
+        private val INIT_COMMANDS = listOf(
+            "ATZ" to 1000L,   // reset
+            "ATE0" to 300L,   // echo off
+            "ATL0" to 300L,   // linefeed off
+            "ATS0" to 300L,   // spazi off
+            "ATH0" to 300L,   // header off
+            "ATSP0" to 300L,  // protocollo automatico
+        )
+
+        private val HEX = "0123456789ABCDEF".toSet()
+
+        /** Rimuove prompt, echo e whitespace, normalizzando gli spazi. */
+        fun clean(raw: String): String =
+            raw.replace(">", " ")
+                .replace(Regex("[\\r\\n\\t]"), " ")
+                .split(" ").filter { it.isNotEmpty() }.joinToString(" ").trim()
+
+        /**
+         * Estrae i byte esadecimali (token a 2 cifre) da una risposta OBD,
+         * unendo risposte multiriga/multi-frame e scartando i marcatori di frame
+         * ISO-TP (`0:`, `1:`) e il testo (SEARCHING, OK, ...).
+         */
+        fun parseHexBytes(response: String): IntArray {
+            val out = mutableListOf<Int>()
+            for (tok in response.uppercase().split(Regex("\\s+"))) {
+                if (tok.endsWith(":")) continue
+                if (tok.length == 2 && tok[0] in HEX && tok[1] in HEX) {
+                    out.add(tok.toInt(16))
+                }
+            }
+            return out.toIntArray()
+        }
+
+        /**
+         * Rimuove l'header `4X [PID]` e ritorna i soli byte dato; null se assente
+         * (es. NO DATA). La risposta positiva al Mode N inizia con 0x40+N.
+         */
+        fun stripModeHeader(data: IntArray, mode: Int, pid: Int?): IntArray? {
+            val responseMode = 0x40 + mode
+            for (i in data.indices) {
+                if (data[i] == responseMode) {
+                    val start = i + 1
+                    if (pid != null) {
+                        if (start < data.size && data[start] == pid) {
+                            return data.copyOfRange(start + 1, data.size)
+                        }
+                        continue
+                    }
+                    return data.copyOfRange(start, data.size)
+                }
+            }
+            return null
+        }
+    }
+}
