@@ -9,7 +9,11 @@ name: Build APK
 #   * automaticamente ad ogni push su quel branch che tocca obdiggio/.
 #
 # L'APK finisce come artifact scaricabile della run. Se configuri i tre secret
-# email (vedi sotto) viene anche inviato via email in allegato.
+# email (vedi README) viene anche inviato via email in allegato.
+#
+# NB: Buildozer viene eseguito direttamente sul runner (non tramite action di
+# terze parti, che al momento hanno l'immagine Docker rotta), installando Java
+# e le dipendenze dai repository standard.
 
 on:
   workflow_dispatch:
@@ -26,7 +30,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # I secret vengono esposti come env per poterli testare negli `if:`.
     env:
       MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
       MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
@@ -42,13 +45,41 @@ jobs:
             exit 1
           fi
 
-      - name: Build APK (debug) con Buildozer
-        uses: ArtemSBulgakov/buildozer-action@v1
-        id: buildozer
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
         with:
-          command: buildozer android debug
-          directory: obdiggio
-          buildozer_version: stable
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Dipendenze di sistema
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential ccache git zip unzip \
+            autoconf automake libtool libtool-bin pkg-config \
+            zlib1g-dev libncurses-dev cmake libffi-dev libssl-dev
+
+      - name: Installa Buildozer + Cython
+        run: |
+          python -m pip install --upgrade pip
+          pip install --upgrade buildozer cython
+
+      - name: Cache SDK/NDK/recipe (~/.buildozer)
+        uses: actions/cache@v4
+        with:
+          path: ~/.buildozer
+          key: buildozer-${{ runner.os }}-${{ hashFiles('obdiggio/buildozer.spec') }}
+          restore-keys: |
+            buildozer-${{ runner.os }}-
+
+      - name: Build APK (debug)
+        working-directory: obdiggio
+        run: buildozer android debug
 
       - name: Pubblica l'APK come artifact
         uses: actions/upload-artifact@v4
