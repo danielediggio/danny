@@ -15,14 +15,12 @@ name: Build APK
 # terze parti, che al momento hanno l'immagine Docker rotta), installando Java
 # e le dipendenze dai repository standard.
 
+# Solo avvio manuale: la versione Kotlin nativa (obdiggio-android) è quella
+# supportata e compila in modo affidabile. Questa build Python/Buildozer arriva
+# fino all'ultimo passo (packaging Gradle) ma resta fragile: la lasciamo
+# disponibile on-demand senza farla partire (e fallire) a ogni push.
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - claude/obd2-program-keevsv
-    paths:
-      - "obdiggio/**"
-      - ".github/workflows/build-apk.yml"
 
 permissions:
   contents: write        # necessario per creare/aggiornare la Release
