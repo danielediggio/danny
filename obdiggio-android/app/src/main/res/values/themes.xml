@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tema di base (finestra/splash). L'interfaccia usa Compose + Material3. -->
+    <style name="Theme.Obdiggio" parent="android:Theme.Material.NoActionBar" />
+</resources>

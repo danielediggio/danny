@@ -1,0 +1,12 @@
+# Gradle / build
+.gradle/
+build/
+captures/
+local.properties
+
+# IDE
+.idea/
+*.iml
+.kotlin/
+
+# NB: il Gradle wrapper (gradle/wrapper/gradle-wrapper.jar) va committato.
