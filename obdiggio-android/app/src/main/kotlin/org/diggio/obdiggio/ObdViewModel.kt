@@ -19,6 +19,9 @@ import org.diggio.obdiggio.core.obd.Pid
 import org.diggio.obdiggio.core.obd.PidResult
 import org.diggio.obdiggio.core.obd.Pids
 import org.diggio.obdiggio.core.obd.Transport
+import org.diggio.obdiggio.core.obd.UdsClient
+import org.diggio.obdiggio.core.obd.UdsModuleResult
+import org.diggio.obdiggio.core.obd.UdsModules
 
 /** Ordine di preferenza dei PID sul cruscotto (i primi sono le lancette hero). */
 private val CANDIDATE_CODES = listOf(
@@ -51,6 +54,8 @@ data class UiState(
     val dtcBusy: Boolean = false,
     val freeze: FreezeFrame? = null,
     val freezeBusy: Boolean = false,
+    val udsResults: List<UdsModuleResult>? = null,
+    val udsBusy: Boolean = false,
     val message: String? = null,
 )
 
@@ -192,6 +197,41 @@ class ObdViewModel(app: Application) : AndroidViewModel(app) {
                         "Nessun freeze frame memorizzato (nessun errore congelato)." else null,
                 )
             }
+        }
+    }
+
+    /**
+     * Scansione UDS multi-centralina: mette in pausa il polling, interroga ogni
+     * modulo VAG per i DTC via UDS, poi ripristina lo stato OBD e riprende.
+     */
+    fun scanUds() {
+        val e = elm ?: return
+        pollJob?.cancel()
+        _state.update { it.copy(udsBusy = true, message = null) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val client = UdsClient(e)
+            val results: List<UdsModuleResult> = try {
+                client.setup()
+                UdsModules.VAG.map { m ->
+                    try { client.readModuleDtcs(m) }
+                    catch (ex: Exception) { UdsModuleResult(m, false, emptyList()) }
+                }
+            } catch (ex: Exception) {
+                emptyList()
+            } finally {
+                client.restoreObd()
+            }
+            val responding = results.count { it.responded }
+            val totalDtc = results.sumOf { it.dtcs.size }
+            _state.update {
+                it.copy(
+                    udsResults = results,
+                    udsBusy = false,
+                    message = if (results.isEmpty()) "Scansione UDS non riuscita."
+                    else "UDS: $responding centraline hanno risposto, $totalDtc codici totali.",
+                )
+            }
+            startPolling()
         }
     }
 

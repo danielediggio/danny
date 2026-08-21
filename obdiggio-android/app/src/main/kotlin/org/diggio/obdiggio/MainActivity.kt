@@ -36,6 +36,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import org.diggio.obdiggio.core.obd.UdsModuleResult
 import org.diggio.obdiggio.ui.*
 import kotlin.math.cos
 import kotlin.math.sin
@@ -65,13 +66,15 @@ class MainActivity : ComponentActivity() {
 }
 
 private enum class Screen(val title: String, val symbol: String) {
-    DASHBOARD("CRUSCOTTO", "◴"), DTC("ERRORI", "▣"), FREEZE("FREEZE", "❄"), CONNECT("CONNESSIONE", "⛓")
+    DASHBOARD("CRUSCOTTO", "◴"), DTC("ERRORI", "▣"), FREEZE("FREEZE", "❄"),
+    VAG("VAG", "⚙"), CONNECT("CONNESSIONE", "⛓")
 }
 
 private fun Screen.accent(): Color = when (this) {
     Screen.DASHBOARD -> NeonGreen
     Screen.DTC -> NeonPink
     Screen.FREEZE -> NeonCyan
+    Screen.VAG -> NeonCyan
     Screen.CONNECT -> NeonGreen
 }
 
@@ -95,6 +98,7 @@ private fun ObdiggioApp(viewModel: ObdViewModel, onConnect: () -> Unit) {
                 Screen.DASHBOARD -> Dashboard(state)
                 Screen.DTC -> DtcScreen(viewModel, state)
                 Screen.FREEZE -> FreezeScreen(viewModel, state)
+                Screen.VAG -> VagScreen(viewModel, state)
                 Screen.CONNECT -> ConnectScreen(state, onConnect, { viewModel.connect(true) }, viewModel::disconnect)
             }
         }
@@ -233,8 +237,9 @@ private fun NeonNavigation(selected: Screen, onSelect: (Screen) -> Unit) {
                     .background(if (active) color.copy(.08f) else Color.Transparent).padding(top = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text(screen.symbol, color = if (active) color else Steel, fontSize = 25.sp)
-                Text(screen.title, color = if (active) color else Steel, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text(screen.symbol, color = if (active) color else Steel, fontSize = 23.sp)
+                Text(screen.title, color = if (active) color else Steel, fontSize = 8.5.sp,
+                    fontWeight = FontWeight.Bold, maxLines = 1)
                 Spacer(Modifier.weight(1f))
                 if (active) Box(Modifier.fillMaxWidth(.9f).height(3.dp).background(color))
             }
@@ -312,6 +317,65 @@ private fun FreezeScreen(viewModel: ObdViewModel, state: UiState) {
                         Text(format(r.value, if (r.value != null && r.value!! % 1.0 == 0.0) 0 else 1) + " " + r.unit,
                             color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VagScreen(viewModel: ObdViewModel, state: UiState) {
+    val results = state.udsResults
+    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("DIAGNOSI CENTRALINE (UDS)", color = NeonCyan, fontSize = 21.sp, fontWeight = FontWeight.Black)
+        NeonButton("SCANSIONA CENTRALINE", NeonCyan, state.connected && !state.udsBusy, Modifier.fillMaxWidth()) {
+            viewModel.scanUds()
+        }
+        Text("Legge gli errori via UDS da più centraline (motore, cambio, ABS, airbag, quadro…). " +
+            "Sui modelli VAG più datati alcune centraline usano un protocollo diverso e potrebbero non rispondere.",
+            color = Steel, fontSize = 12.sp)
+        if (!state.connected) Hint("Prima connettiti a un adattatore.")
+        state.message?.let { Text(it, color = NeonCyan, fontSize = 13.sp) }
+        when {
+            state.udsBusy -> {
+                LinearProgressIndicator(Modifier.fillMaxWidth(), color = NeonCyan)
+                Text("Scansione centraline in corso…", color = Steel, fontSize = 13.sp)
+            }
+            results == null -> Hint("Premi SCANSIONA CENTRALINE.")
+            else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(results) { r -> ModuleCard(r) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModuleCard(result: UdsModuleResult) {
+    val borderColor = when {
+        !result.responded -> Steel.copy(.4f)
+        result.dtcs.isEmpty() -> NeonGreen.copy(.6f)
+        else -> NeonPink
+    }
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(PanelDark)
+        .border(1.dp, borderColor, RoundedCornerShape(12.dp)).padding(13.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically) {
+            Text(result.module.name.uppercase(), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Black)
+            val (label, col) = when {
+                !result.responded -> "non risponde" to Steel
+                result.dtcs.isEmpty() -> "OK ✓" to NeonGreen
+                else -> "${result.dtcs.size} errori" to NeonPink
+            }
+            Text(label, color = col, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        }
+        if (!result.responded) {
+            Text("Centralina non raggiungibile in UDS (probabile protocollo legacy VAG).",
+                color = Steel, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+        } else {
+            result.dtcs.forEach { dtc ->
+                Column(Modifier.padding(top = 8.dp)) {
+                    Text(dtc.fullCode, color = NeonPink, fontSize = 16.sp, fontWeight = FontWeight.Black)
+                    Text(dtc.description, color = Color.White, fontSize = 13.sp)
                 }
             }
         }

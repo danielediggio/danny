@@ -28,6 +28,10 @@ class MockTransport(private val hasDtcs: Boolean = true) : Transport() {
 
     private fun respond(command: String): String = when {
         command.startsWith("AT") -> respondAt(command)
+        // UDS: ReadDTCInformation (0x19/0x02) e ClearDiagnosticInformation (0x14).
+        command.startsWith("1902") -> if (hasDtcs)
+            "59 02 FF 20 15 11 08 04 01 00 08" else "59 02 FF"
+        command.startsWith("14") -> "54"
         command.startsWith("02") -> respondMode02(command)
         command.startsWith("01") -> respondMode01(command)
         // Formato CAN (ISO 15765-4): "43 NN <coppie>", NN = numero di DTC.
