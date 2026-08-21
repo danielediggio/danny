@@ -29,6 +29,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -37,13 +39,16 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.diggio.obdiggio.core.obd.Pid
 import org.diggio.obdiggio.core.obd.PidResult
 import org.diggio.obdiggio.core.obd.Pids
+import org.diggio.obdiggio.ui.NavIcon
 import org.diggio.obdiggio.ui.Neon
 import org.diggio.obdiggio.ui.ObdiggioTheme
 import org.diggio.obdiggio.ui.SevenSegment
 import org.diggio.obdiggio.ui.Tachometer
 import org.diggio.obdiggio.ui.TileIcon
 import org.diggio.obdiggio.ui.carbonBackground
+import org.diggio.obdiggio.ui.drawNavIcon
 import org.diggio.obdiggio.ui.drawTileIcon
+import org.diggio.obdiggio.ui.speedStreaks
 
 class MainActivity : ComponentActivity() {
 
@@ -86,30 +91,28 @@ private fun AppRoot(viewModel: ObdViewModel, onScanConnect: () -> Unit) {
 
     Scaffold(
         containerColor = Color.Transparent,
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("OBD", color = Neon.Cyan, fontWeight = FontWeight.Black, letterSpacing = 3.sp)
-                        Text("IGGIO", color = Neon.Magenta, fontWeight = FontWeight.Black, letterSpacing = 3.sp)
-                        Text("  ·  ${tab.label.uppercase()}", color = Neon.Muted, fontSize = 13.sp, letterSpacing = 2.sp)
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent),
-            )
-        },
+        topBar = { HeaderBar(state.connected) },
         bottomBar = {
             NavigationBar(containerColor = Neon.Panel, tonalElevation = 0.dp) {
                 Tab.entries.forEach { t ->
                     val selected = tab == t
+                    val (navIcon, accent) = navMeta(t)
+                    val tint = if (selected) accent else Neon.Muted
                     NavigationBarItem(
                         selected = selected,
                         onClick = { tab = t },
-                        icon = {},
-                        label = { Text(t.label, letterSpacing = 1.sp,
+                        icon = {
+                            Canvas(Modifier.size(26.dp)) {
+                                if (selected) drawNavIcon(navIcon, Offset(size.width / 2f, size.height / 2f),
+                                    size.minDimension * 1.15f, accent.copy(alpha = 0.25f))
+                                drawNavIcon(navIcon, Offset(size.width / 2f, size.height / 2f),
+                                    size.minDimension, tint)
+                            }
+                        },
+                        label = { Text(t.label, letterSpacing = 1.sp, fontSize = 11.sp,
                             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedTextColor = Neon.Cyan,
+                            selectedTextColor = accent,
                             unselectedTextColor = Neon.Muted,
                             indicatorColor = Color.Transparent,
                         ),
@@ -119,13 +122,47 @@ private fun AppRoot(viewModel: ObdViewModel, onScanConnect: () -> Unit) {
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
-            Canvas(Modifier.fillMaxSize()) { carbonBackground() }
+            Canvas(Modifier.fillMaxSize()) {
+                carbonBackground()
+                if (tab == Tab.DASHBOARD) speedStreaks(Offset(size.width / 2f, size.height * 0.30f))
+            }
             when (tab) {
                 Tab.DASHBOARD -> DashboardScreen(viewModel, state)
                 Tab.DTC -> DtcScreen(viewModel, state)
                 Tab.FREEZE -> FreezeScreen(viewModel, state)
                 Tab.CONNECT -> ConnectScreen(state, onScanConnect) { viewModel.connect(useMock = true) }
             }
+        }
+    }
+}
+
+private fun navMeta(t: Tab): Pair<NavIcon, Color> = when (t) {
+    Tab.DASHBOARD -> NavIcon.GAUGE to Neon.Cyan
+    Tab.DTC -> NavIcon.ENGINE to Neon.Red
+    Tab.FREEZE -> NavIcon.SNAPSHOT to Neon.Magenta
+    Tab.CONNECT -> NavIcon.LINK to Neon.Cyan
+}
+
+@Composable
+private fun HeaderBar(connected: Boolean) {
+    val chrome = Brush.verticalGradient(
+        listOf(Color(0xFFFFFFFF), Color(0xFFC4CAD4), Color(0xFF767C86), Color(0xFFEAEDF2)))
+    Column(
+        Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Row {
+            val chromeStyle = TextStyle(brush = chrome)
+            Text("OBDIGGI", style = chromeStyle, fontSize = 30.sp, fontWeight = FontWeight.Black,
+                fontStyle = FontStyle.Italic, letterSpacing = 2.sp)
+            Text("O", color = Neon.Red, fontSize = 30.sp, fontWeight = FontWeight.Black,
+                fontStyle = FontStyle.Italic, letterSpacing = 2.sp)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Canvas(Modifier.size(9.dp)) { drawCircle(if (connected) Neon.Lime else Neon.Muted, size.minDimension / 2f) }
+            Text(if (connected) "VGATE · CONNESSO" else "NON CONNESSO",
+                color = if (connected) Neon.Lime else Neon.Muted, fontSize = 12.sp,
+                fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
         }
     }
 }
