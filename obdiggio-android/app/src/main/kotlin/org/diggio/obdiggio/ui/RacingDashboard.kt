@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.nativeCanvas
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -198,7 +199,23 @@ fun Tachometer(rpm: Double?, maxRpm: Double = 7000.0, modifier: Modifier = Modif
             // Quadrante.
             drawCircle(Brush.radialGradient(
                 listOf(Color(0xFF10131A), Color(0xFF06070A)), c, r * 0.9f), r * 0.88f, c)
-            hexMesh(c, r * 0.86f, Color(0x0A00E5FF))
+
+            // Pod centrale a "uovo" con trama esagonale: incornicia il display digitale.
+            val podC = Offset(c.x, c.y + r * 0.16f)
+            val podHalfW = r * 0.42f
+            val podHalfH = r * 0.52f
+            drawOval(
+                Brush.radialGradient(listOf(Color(0xFF0C1017), Color(0xFF04060A)), podC, r * 0.6f),
+                topLeft = Offset(podC.x - podHalfW, podC.y - podHalfH),
+                size = Size(podHalfW * 2f, podHalfH * 2f),
+            )
+            hexMesh(podC, r * 0.38f, Color(0x1400E5FF))
+            drawOval(
+                Color(0x22FFFFFF),
+                topLeft = Offset(podC.x - podHalfW, podC.y - podHalfH),
+                size = Size(podHalfW * 2f, podHalfH * 2f),
+                style = Stroke(1.5f),
+            )
 
             // Zone colorate sul bordo interno.
             fun zone(from: Float, to: Float, col: Color) = drawArc(
@@ -208,36 +225,50 @@ fun Tachometer(rpm: Double?, maxRpm: Double = 7000.0, modifier: Modifier = Modif
             zone(0f, 0.28f, Color(0xFF12E36A))
             zone(0.80f, 1f, Color(0xFFFF2A44))
 
-            // Tacche + minori.
+            // Tacche maggiori (bianche) + minori + numeri 0-7.
             val majors = 7
+            val numPaint = android.graphics.Paint().apply {
+                isAntiAlias = true
+                textAlign = android.graphics.Paint.Align.CENTER
+                color = 0xFFEDF2F8.toInt()
+                typeface = android.graphics.Typeface.create(
+                    android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+                textSize = r * 0.14f
+                setShadowLayer(r * 0.03f, 0f, 0f, 0xCC000000.toInt())
+            }
             for (i in 0..majors) {
                 val f = i / majors.toFloat()
                 val a = Math.toRadians((start + total * f).toDouble())
-                val col = ringColor(f)
-                drawLine(col, Offset(c.x + r * 0.86f * cos(a).toFloat(), c.y + r * 0.86f * sin(a).toFloat()),
-                    Offset(c.x + r * 0.72f * cos(a).toFloat(), c.y + r * 0.72f * sin(a).toFloat()), 7f,
+                drawLine(Color(0xFFEDF2F8),
+                    Offset(c.x + r * 0.86f * cos(a).toFloat(), c.y + r * 0.86f * sin(a).toFloat()),
+                    Offset(c.x + r * 0.71f * cos(a).toFloat(), c.y + r * 0.71f * sin(a).toFloat()), 7f,
                     cap = StrokeCap.Round)
                 if (i < majors) for (m in 1..3) {
                     val fm = (i + m / 4f) / majors.toFloat()
                     val am = Math.toRadians((start + total * fm).toDouble())
-                    drawLine(Color(0x55FFFFFF),
-                        Offset(c.x + r * 0.84f * cos(am).toFloat(), c.y + r * 0.84f * sin(am).toFloat()),
+                    drawLine(Color(0x66FFFFFF),
+                        Offset(c.x + r * 0.85f * cos(am).toFloat(), c.y + r * 0.85f * sin(am).toFloat()),
                         Offset(c.x + r * 0.78f * cos(am).toFloat(), c.y + r * 0.78f * sin(am).toFloat()), 3f)
                 }
+                val lr = r * 0.615f
+                val lx = c.x + lr * cos(a).toFloat()
+                val ly = c.y + lr * sin(a).toFloat() - (numPaint.ascent() + numPaint.descent()) / 2f
+                drawContext.canvas.nativeCanvas.drawText(i.toString(), lx, ly, numPaint)
             }
 
-            // Lancetta con bagliore + coda.
+            // Lancetta verde neon con bagliore + coda.
             val na = Math.toRadians((start + total * animated).toDouble())
-            val nc = ringColor(animated)
-            val tip = Offset(c.x + r * 0.80f * cos(na).toFloat(), c.y + r * 0.80f * sin(na).toFloat())
-            val tail = Offset(c.x - r * 0.16f * cos(na).toFloat(), c.y - r * 0.16f * sin(na).toFloat())
-            listOf(20f to 0.16f, 12f to 0.28f, 6f to 1f).forEach { (wd, al) ->
+            val nc = Color(0xFF76FF3B)
+            val tip = Offset(c.x + r * 0.70f * cos(na).toFloat(), c.y + r * 0.70f * sin(na).toFloat())
+            val tail = Offset(c.x - r * 0.15f * cos(na).toFloat(), c.y - r * 0.15f * sin(na).toFloat())
+            listOf(24f to 0.10f, 15f to 0.20f, 8f to 0.9f, 4f to 1f).forEach { (wd, al) ->
                 drawLine(nc.copy(alpha = al), tail, tip, wd, cap = StrokeCap.Round)
             }
             // Hub metallico.
-            drawCircle(Brush.radialGradient(listOf(Color(0xFF4A4F59), Color(0xFF14171D)), c, r * 0.16f),
-                r * 0.15f, c)
-            drawCircle(nc, r * 0.045f, c)
+            drawCircle(Brush.radialGradient(listOf(Color(0xFF3B4048), Color(0xFF0E1116)), c, r * 0.17f),
+                r * 0.16f, c)
+            drawCircle(Color(0xFF20242B), r * 0.11f, c)
+            drawCircle(nc.copy(alpha = 0.9f), r * 0.04f, c)
         }
     }
 }

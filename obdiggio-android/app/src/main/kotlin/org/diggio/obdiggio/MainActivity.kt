@@ -28,6 +28,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
@@ -102,11 +103,17 @@ private fun AppRoot(viewModel: ObdViewModel, onScanConnect: () -> Unit) {
                         selected = selected,
                         onClick = { tab = t },
                         icon = {
-                            Canvas(Modifier.size(26.dp)) {
-                                if (selected) drawNavIcon(navIcon, Offset(size.width / 2f, size.height / 2f),
-                                    size.minDimension * 1.15f, accent.copy(alpha = 0.25f))
-                                drawNavIcon(navIcon, Offset(size.width / 2f, size.height / 2f),
-                                    size.minDimension, tint)
+                            Canvas(Modifier.size(28.dp)) {
+                                val cx = size.width / 2f
+                                val cyIcon = size.height * 0.40f
+                                if (selected) drawNavIcon(navIcon, Offset(cx, cyIcon),
+                                    size.minDimension * 1.05f, accent.copy(alpha = 0.28f))
+                                drawNavIcon(navIcon, Offset(cx, cyIcon), size.minDimension * 0.82f, tint)
+                                if (selected) {
+                                    val uy = size.height * 0.98f
+                                    drawLine(accent, Offset(size.width * 0.22f, uy),
+                                        Offset(size.width * 0.78f, uy), 3.5f, cap = StrokeCap.Round)
+                                }
                             }
                         },
                         label = { Text(t.label, letterSpacing = 1.sp, fontSize = 11.sp,
@@ -137,7 +144,7 @@ private fun AppRoot(viewModel: ObdViewModel, onScanConnect: () -> Unit) {
 }
 
 private fun navMeta(t: Tab): Pair<NavIcon, Color> = when (t) {
-    Tab.DASHBOARD -> NavIcon.GAUGE to Neon.Cyan
+    Tab.DASHBOARD -> NavIcon.GAUGE to Neon.Lime
     Tab.DTC -> NavIcon.ENGINE to Neon.Red
     Tab.FREEZE -> NavIcon.SNAPSHOT to Neon.Magenta
     Tab.CONNECT -> NavIcon.LINK to Neon.Cyan
@@ -147,22 +154,43 @@ private fun navMeta(t: Tab): Pair<NavIcon, Color> = when (t) {
 private fun HeaderBar(connected: Boolean) {
     val chrome = Brush.verticalGradient(
         listOf(Color(0xFFFFFFFF), Color(0xFFC4CAD4), Color(0xFF767C86), Color(0xFFEAEDF2)))
-    Column(
-        Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Row {
-            val chromeStyle = TextStyle(brush = chrome)
-            Text("OBDIGGI", style = chromeStyle, fontSize = 30.sp, fontWeight = FontWeight.Black,
-                fontStyle = FontStyle.Italic, letterSpacing = 2.sp)
-            Text("O", color = Neon.Red, fontSize = 30.sp, fontWeight = FontWeight.Black,
-                fontStyle = FontStyle.Italic, letterSpacing = 2.sp)
+    Box(Modifier.fillMaxWidth()) {
+        // Accenti neon rossi ai lati del logo + filo cromato sotto (stile piastra cruscotto).
+        Canvas(Modifier.fillMaxWidth().height(66.dp)) {
+            val w = size.width
+            val cy = size.height * 0.40f
+            fun chevron(x0: Float, dir: Float) {
+                listOf(6f to 0.16f, 3f to 0.5f, 1.5f to 1f).forEach { (sw, al) ->
+                    val col = Neon.Red.copy(alpha = al)
+                    drawLine(col, Offset(x0, cy - 16f), Offset(x0 + dir * 26f, cy), sw, cap = StrokeCap.Round)
+                    drawLine(col, Offset(x0 + dir * 26f, cy), Offset(x0, cy + 16f), sw, cap = StrokeCap.Round)
+                }
+            }
+            chevron(w * 0.11f, 1f)
+            chevron(w * 0.89f, -1f)
+            val gy = size.height * 0.94f
+            drawLine(
+                Brush.horizontalGradient(listOf(
+                    Color.Transparent, Color(0x88C7CDD6), Color(0xFFC7CDD6), Color(0x88C7CDD6), Color.Transparent)),
+                Offset(w * 0.12f, gy), Offset(w * 0.88f, gy), 2f)
         }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Canvas(Modifier.size(9.dp)) { drawCircle(if (connected) Neon.Lime else Neon.Muted, size.minDimension / 2f) }
-            Text(if (connected) "VGATE · CONNESSO" else "NON CONNESSO",
-                color = if (connected) Neon.Lime else Neon.Muted, fontSize = 12.sp,
-                fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+        Column(
+            Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Row {
+                val chromeStyle = TextStyle(brush = chrome)
+                Text("OBDIGGI", style = chromeStyle, fontSize = 30.sp, fontWeight = FontWeight.Black,
+                    fontStyle = FontStyle.Italic, letterSpacing = 2.sp)
+                Text("O", color = Neon.Red, fontSize = 30.sp, fontWeight = FontWeight.Black,
+                    fontStyle = FontStyle.Italic, letterSpacing = 2.sp)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Canvas(Modifier.size(9.dp)) { drawCircle(if (connected) Neon.Lime else Neon.Muted, size.minDimension / 2f) }
+                Text(if (connected) "VGATE · CONNESSO" else "NON CONNESSO",
+                    color = if (connected) Neon.Lime else Neon.Muted, fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+            }
         }
     }
 }
